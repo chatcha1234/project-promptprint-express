@@ -1,25 +1,40 @@
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
+const mongoose = require("mongoose");
+const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
 
+// Import Models
+const User = require("./models/User");
+const Product = require("./models/Product");
+const Design = require("./models/Design");
+
+// --- Configuration ---
 const app = express();
 const PORT = process.env.PORT || 5000;
-const mongoose = require("mongoose");
 
-// Middleware
+// --- Middleware ---
 app.use(cors());
 app.use(express.json());
 
-// Basic Test Route
+// --- Database Connection ---
+mongoose
+  .connect(process.env.MONGODB_URI)
+  .then(() => {
+    console.log("MongoDB Connected");
+    seedProducts(); // Run seeder on start
+  })
+  .catch((err) => console.log("MongoDB Connection Error:", err));
+
+// --- Routes ---
+
+// 1. Health Check
 app.get("/", (req, res) => {
   res.send("Backend is running!");
 });
 
-// --- User Auth API ---
-const User = require("./models/User");
-const bcrypt = require("bcryptjs");
-const jwt = require("jsonwebtoken");
-
+// 2. Authentication Routes
 // Register
 app.post("/api/register", async (req, res) => {
   try {
@@ -56,16 +71,25 @@ app.post("/api/login", async (req, res) => {
 
     // Check user by Email OR Username (if email field contains a username)
     // Note: Frontend sends 'email' field, but user might type username there
+    console.log("Login attempt for:", email); // DEBUG
+    console.log("Password provided:", password); // DEBUG
+
     const user = await User.findOne({
       $or: [{ email: email }, { username: email }],
     });
 
     if (!user) {
+      console.log("User not found in DB"); // DEBUG
       return res.status(400).json({ error: "Invalid credentials" });
     }
 
+    console.log("User found:", user.username); // DEBUG
+    console.log("Stored Hashed Password:", user.password); // DEBUG
+
     // Check password
     const isMatch = await bcrypt.compare(password, user.password);
+    console.log("Password Match Result:", isMatch); // DEBUG
+
     if (!isMatch) {
       return res.status(400).json({ error: "Invalid credentials" });
     }
@@ -89,9 +113,7 @@ app.post("/api/login", async (req, res) => {
   }
 });
 
-// --- Product API ---
-const Product = require("./models/Product");
-
+// 3. Product Routes
 // Get All Products
 app.get("/api/products", async (req, res) => {
   try {
@@ -102,6 +124,39 @@ app.get("/api/products", async (req, res) => {
   }
 });
 
+// 4. AI Design Routes
+// Mock Route for AI Design
+app.post("/api/generate-design", async (req, res) => {
+  const { prompt, style } = req.body;
+  console.log("Received prompt:", prompt);
+
+  // Mock generation (replace with real AI later)
+  const mockImageUrl =
+    "https://images.unsplash.com/photo-1583336633292-2ec414d95204?ixlib=rb-1.2.1&auto=format&fit=crop&w=800&q=80";
+  const mockEnhanced = `Enhanced version of: ${prompt} - High quality, detailed, trending on artstation.`;
+
+  try {
+    // Save to Database
+    const newDesign = await Design.create({
+      prompt,
+      enhancedPrompt: mockEnhanced,
+      imageUrl: mockImageUrl,
+      style: style || "General",
+    });
+
+    res.json({
+      success: true,
+      imageUrl: newDesign.imageUrl,
+      enhancedPrompt: newDesign.enhancedPrompt,
+      designId: newDesign._id,
+    });
+  } catch (error) {
+    console.error("Database Error:", error);
+    res.status(500).json({ error: "Failed to save design" });
+  }
+});
+
+// --- Helper Functions ---
 // Seed Initial Products (Run once)
 const seedProducts = async () => {
   try {
@@ -148,47 +203,7 @@ const seedProducts = async () => {
   }
 };
 
-// Initial Database Connection & Seeding
-mongoose
-  .connect(process.env.MONGODB_URI)
-  .then(() => {
-    console.log("MongoDB Connected");
-    seedProducts();
-  })
-  .catch((err) => console.log("MongoDB Connection Error:", err));
-
-// Mock Route for AI Design
-app.post("/api/generate-design", async (req, res) => {
-  const { prompt, style } = req.body;
-  console.log("Received prompt:", prompt);
-
-  // Mock generation (replace with real AI later)
-  const mockImageUrl =
-    "https://images.unsplash.com/photo-1583336633292-2ec414d95204?ixlib=rb-1.2.1&auto=format&fit=crop&w=800&q=80";
-  const mockEnhanced = `Enhanced version of: ${prompt} - High quality, detailed, trending on artstation.`;
-
-  try {
-    // Save to Database
-    const Design = require("./models/Design");
-    const newDesign = await Design.create({
-      prompt,
-      enhancedPrompt: mockEnhanced,
-      imageUrl: mockImageUrl,
-      style: style || "General",
-    });
-
-    res.json({
-      success: true,
-      imageUrl: newDesign.imageUrl,
-      enhancedPrompt: newDesign.enhancedPrompt,
-      designId: newDesign._id,
-    });
-  } catch (error) {
-    console.error("Database Error:", error);
-    res.status(500).json({ error: "Failed to save design" });
-  }
-});
-
+// --- Server Start ---
 app.listen(PORT, () => {
   console.log(`Server is running on http://localhost:${PORT}`);
 });
