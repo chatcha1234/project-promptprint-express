@@ -7,6 +7,7 @@ const multer = require("multer");
 const cloudinary = require("cloudinary").v2;
 const fs = require("fs");
 const path = require("path");
+const axios = require("axios"); // Import axios
 require("dotenv").config();
 
 // Helper to remove files
@@ -279,6 +280,16 @@ app.put("/admin/orders/:id/status", async (req, res) => {
   }
 });
 
+console.log("Gemini AI Config:");
+console.log(
+  `- API Key: ${process.env.GEMINI_API_KEY ? "✅ Found" : "❌ Missing"}`
+);
+console.log("Remove.bg Config:");
+console.log(
+  `- API Key: ${process.env.REMOVE_BG_API_KEY ? "✅ Found" : "❌ Missing"}`
+);
+console.log("---------------------------");
+
 // 7. AI Design Generation Route
 app.post("/api/generate-design", async (req, res) => {
   try {
@@ -288,9 +299,15 @@ app.post("/api/generate-design", async (req, res) => {
       return res.status(400).json({ error: "Prompt is required" });
     }
 
+    console.log("-----------------------------------------");
     console.log("🎨 Received Prompt:", prompt);
     if (style) console.log("🎨 Desired Style:", style);
-    if (removeBackground) console.log("🎨 Remove Background: TRUE");
+    console.log("✂️ Remove Background Requested:", removeBackground);
+    console.log(
+      "🔑 Remove.bg Key Status:",
+      process.env.REMOVE_BG_API_KEY ? "AVAILABLE" : "MISSING"
+    );
+    console.log("-----------------------------------------");
 
     let enhancedPrompt = prompt;
 
@@ -351,9 +368,11 @@ app.post("/api/generate-design", async (req, res) => {
 
     // 3. Upload to Cloudinary
     console.log("☁️ Uploading to Cloudinary...");
+    // 3. Upload to Cloudinary
+    console.log("☁️ Uploading to Cloudinary...");
     const uploadResult = await cloudinary.uploader.upload(pollinationsUrl, {
       folder: "promptprint-designs",
-      format: "png", // Force PNG for better quality/transparency support
+      format: "png",
     });
 
     // 4. Save to MongoDB
@@ -378,6 +397,58 @@ app.post("/api/generate-design", async (req, res) => {
   } catch (error) {
     console.error("❌ AI Generation Error:", error);
     res.status(500).json({ error: "Failed to generate design" });
+  }
+});
+
+// 8. Manual Background Removal Route
+app.post("/api/remove-background", async (req, res) => {
+  try {
+    const { imageUrl } = req.body;
+
+    if (!imageUrl) {
+      return res.status(400).json({ error: "Image URL is required" });
+    }
+
+    if (!process.env.REMOVE_BG_API_KEY) {
+      return res.status(500).json({ error: "Remove.bg API Key missing" });
+    }
+
+    console.log("✂️ Manual Background Removal Requested for:", imageUrl);
+
+    // Call Remove.bg
+    const response = await axios.post(
+      "https://api.remove.bg/v1.0/removebg",
+      {
+        image_url: imageUrl,
+        size: "auto",
+      },
+      {
+        headers: {
+          "X-Api-Key": process.env.REMOVE_BG_API_KEY,
+        },
+        responseType: "arraybuffer",
+      }
+    );
+
+    const base64Image = Buffer.from(response.data, "binary").toString("base64");
+    const transparencyDataUrl = `data:image/png;base64,${base64Image}`;
+
+    // Upload to Cloudinary
+    console.log("☁️ Uploading transparent image to Cloudinary...");
+    const uploadResult = await cloudinary.uploader.upload(transparencyDataUrl, {
+      folder: "promptprint-designs",
+      format: "png",
+    });
+
+    console.log("✅ Manual BG Removal Success:", uploadResult.secure_url);
+
+    res.json({ transparentImageUrl: uploadResult.secure_url });
+  } catch (error) {
+    console.error(
+      "❌ BG Removal Error:",
+      error.response?.data || error.message
+    );
+    res.status(500).json({ error: "Failed to remove background" });
   }
 });
 
