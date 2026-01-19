@@ -49,19 +49,19 @@ console.log("Cloudinary Config:");
 console.log(
   `- Cloud Name: ${
     process.env.CLOUDINARY_CLOUD_NAME ? "✅ Found" : "❌ Missing"
-  }`
+  }`,
 );
 console.log(
-  `- API Key: ${process.env.CLOUDINARY_API_KEY ? "✅ Found" : "❌ Missing"}`
+  `- API Key: ${process.env.CLOUDINARY_API_KEY ? "✅ Found" : "❌ Missing"}`,
 );
 console.log(
   `- API Secret: ${
     process.env.CLOUDINARY_API_SECRET ? "✅ Found" : "❌ Missing"
-  }`
+  }`,
 );
 console.log("Gemini AI Config:");
 console.log(
-  `- API Key: ${process.env.GEMINI_API_KEY ? "✅ Found" : "❌ Missing"}`
+  `- API Key: ${process.env.GEMINI_API_KEY ? "✅ Found" : "❌ Missing"}`,
 );
 console.log("---------------------------");
 
@@ -113,7 +113,7 @@ app.post("/login", async (req, res) => {
     const token = jwt.sign(
       { userId: user._id, role: user.role },
       process.env.JWT_SECRET,
-      { expiresIn: "1h" }
+      { expiresIn: "1h" },
     );
     res.json({
       token,
@@ -294,7 +294,7 @@ app.put("/admin/orders/:id/status", async (req, res) => {
     const order = await Order.findByIdAndUpdate(
       req.params.id,
       { status },
-      { new: true }
+      { new: true },
     );
     if (!order) return res.status(404).json({ error: "Order not found" });
     res.json(order);
@@ -327,11 +327,11 @@ app.delete("/api/users/:id", async (req, res) => {
 
 console.log("Gemini AI Config:");
 console.log(
-  `- API Key: ${process.env.GEMINI_API_KEY ? "✅ Found" : "❌ Missing"}`
+  `- API Key: ${process.env.GEMINI_API_KEY ? "✅ Found" : "❌ Missing"}`,
 );
 console.log("Remove.bg Config:");
 console.log(
-  `- API Key: ${process.env.REMOVE_BG_API_KEY ? "✅ Found" : "❌ Missing"}`
+  `- API Key: ${process.env.REMOVE_BG_API_KEY ? "✅ Found" : "❌ Missing"}`,
 );
 console.log("---------------------------");
 
@@ -350,7 +350,7 @@ app.post("/api/generate-design", async (req, res) => {
     console.log("✂️ Remove Background Requested:", removeBackground);
     console.log(
       "🔑 Remove.bg Key Status:",
-      process.env.REMOVE_BG_API_KEY ? "AVAILABLE" : "MISSING"
+      process.env.REMOVE_BG_API_KEY ? "AVAILABLE" : "MISSING",
     );
     console.log("-----------------------------------------");
 
@@ -423,15 +423,36 @@ app.post("/api/generate-design", async (req, res) => {
     // 4. Save to MongoDB
     const { userId } = req.body;
     let newDesign = null;
-    if (userId) {
+
+    // Validate userId before usage
+    let validUserId = null;
+    if (userId && mongoose.Types.ObjectId.isValid(userId)) {
+      validUserId = userId;
+    } else if (userId) {
+      console.warn(
+        `⚠️ Invalid userId received: ${userId}. Saving design without user association.`,
+      );
+    }
+
+    if (validUserId) {
       newDesign = await Design.create({
-        userId,
+        userId: validUserId,
         prompt,
         enhancedPrompt,
         imageUrl: uploadResult.secure_url,
         style: "AI Generated",
       });
       console.log("💾 Design saved to DB:", newDesign._id);
+    } else {
+      // Option to save design without user if needed, or just skip saving to DB
+      // For now, let's save it without userId if your schema allows it (it does, references are optional usually if not required: true)
+      newDesign = await Design.create({
+        prompt,
+        enhancedPrompt,
+        imageUrl: uploadResult.secure_url,
+        style: "AI Generated",
+      });
+      console.log("💾 Design saved to DB (Anonymous):", newDesign._id);
     }
 
     res.json({
@@ -481,7 +502,7 @@ app.post("/api/remove-background", async (req, res) => {
           "X-Api-Key": process.env.REMOVE_BG_API_KEY,
         },
         responseType: "arraybuffer",
-      }
+      },
     );
 
     const base64Image = Buffer.from(response.data, "binary").toString("base64");
@@ -500,7 +521,7 @@ app.post("/api/remove-background", async (req, res) => {
   } catch (error) {
     console.error(
       "❌ BG Removal Error:",
-      error.response?.data || error.message
+      error.response?.data || error.message,
     );
     res.status(500).json({ error: "Failed to remove background" });
   }
