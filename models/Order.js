@@ -18,6 +18,14 @@ const OrderSchema = new mongoose.Schema({
         type: mongoose.Schema.Types.ObjectId,
         ref: "Product",
       },
+      // For custom AI-generated products
+      customProduct: {
+        name: String,
+        description: String,
+        price: Number,
+        imageUrl: String,
+        isCustom: Boolean,
+      },
       name: String,
       price: Number,
       quantity: Number,

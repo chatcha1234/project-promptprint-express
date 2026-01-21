@@ -22,7 +22,8 @@ const PORT = process.env.PORT || 5000;
 
 // Middleware
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
 // MongoDB Connection
 mongoose
@@ -35,6 +36,7 @@ const User = require("./models/User");
 const Product = require("./models/Product");
 const Order = require("./models/Order");
 const Design = require("./models/Design");
+const Cart = require("./models/Cart");
 
 // Cloudinary Config
 cloudinary.config({
@@ -49,19 +51,19 @@ console.log("Cloudinary Config:");
 console.log(
   `- Cloud Name: ${
     process.env.CLOUDINARY_CLOUD_NAME ? "✅ Found" : "❌ Missing"
-  }`
+  }`,
 );
 console.log(
-  `- API Key: ${process.env.CLOUDINARY_API_KEY ? "✅ Found" : "❌ Missing"}`
+  `- API Key: ${process.env.CLOUDINARY_API_KEY ? "✅ Found" : "❌ Missing"}`,
 );
 console.log(
   `- API Secret: ${
     process.env.CLOUDINARY_API_SECRET ? "✅ Found" : "❌ Missing"
-  }`
+  }`,
 );
 console.log("Gemini AI Config:");
 console.log(
-  `- API Key: ${process.env.GEMINI_API_KEY ? "✅ Found" : "❌ Missing"}`
+  `- API Key: ${process.env.GEMINI_API_KEY ? "✅ Found" : "❌ Missing"}`,
 );
 console.log("---------------------------");
 
@@ -125,7 +127,7 @@ app.post("/api/login", async (req, res) => {
     const token = jwt.sign(
       { userId: user._id, role: user.role },
       process.env.JWT_SECRET,
-      { expiresIn: "1h" }
+      { expiresIn: "1h" },
     );
 
     res.json({
@@ -307,7 +309,7 @@ app.put("/admin/orders/:id/status", async (req, res) => {
     const order = await Order.findByIdAndUpdate(
       req.params.id,
       { status },
-      { new: true }
+      { new: true },
     );
     if (!order) return res.status(404).json({ error: "Order not found" });
     res.json(order);
@@ -340,11 +342,11 @@ app.delete("/api/users/:id", async (req, res) => {
 
 console.log("Gemini AI Config:");
 console.log(
-  `- API Key: ${process.env.GEMINI_API_KEY ? "✅ Found" : "❌ Missing"}`
+  `- API Key: ${process.env.GEMINI_API_KEY ? "✅ Found" : "❌ Missing"}`,
 );
 console.log("Remove.bg Config:");
 console.log(
-  `- API Key: ${process.env.REMOVE_BG_API_KEY ? "✅ Found" : "❌ Missing"}`
+  `- API Key: ${process.env.REMOVE_BG_API_KEY ? "✅ Found" : "❌ Missing"}`,
 );
 console.log("---------------------------");
 
@@ -363,7 +365,7 @@ app.post("/api/generate-design", async (req, res) => {
     console.log("✂️ Remove Background Requested:", removeBackground);
     console.log(
       "🔑 Remove.bg Key Status:",
-      process.env.REMOVE_BG_API_KEY ? "AVAILABLE" : "MISSING"
+      process.env.REMOVE_BG_API_KEY ? "AVAILABLE" : "MISSING",
     );
     console.log("-----------------------------------------");
 
@@ -494,7 +496,7 @@ app.post("/api/remove-background", async (req, res) => {
           "X-Api-Key": process.env.REMOVE_BG_API_KEY,
         },
         responseType: "arraybuffer",
-      }
+      },
     );
 
     const base64Image = Buffer.from(response.data, "binary").toString("base64");
@@ -513,9 +515,210 @@ app.post("/api/remove-background", async (req, res) => {
   } catch (error) {
     console.error(
       "❌ BG Removal Error:",
-      error.response?.data || error.message
+      error.response?.data || error.message,
     );
     res.status(500).json({ error: "Failed to remove background" });
+  }
+});
+
+// --- Cart Routes ---
+
+// Get user's cart
+app.get("/api/cart/:userId", async (req, res) => {
+  try {
+    const cart = await Cart.findOne({ userId: req.params.userId }).populate(
+      "items.productId",
+    );
+    if (!cart) {
+      return res.json({ userId: req.params.userId, items: [] });
+    }
+    res.json(cart);
+  } catch (error) {
+    console.error("Get Cart Error:", error);
+    res.status(500).json({ error: "Failed to fetch cart" });
+  }
+});
+
+// Add item to cart (regular product)
+app.post("/api/cart", async (req, res) => {
+  try {
+    const { userId, productId, quantity = 1 } = req.body;
+
+    let cart = await Cart.findOne({ userId });
+    if (!cart) {
+      cart = new Cart({ userId, items: [] });
+    }
+
+    // Check if product already in cart
+    const existingItem = cart.items.find(
+      (item) => item.productId && item.productId.toString() === productId,
+    );
+
+    if (existingItem) {
+      existingItem.quantity += quantity;
+    } else {
+      cart.items.push({ productId, quantity });
+    }
+
+    await cart.save();
+    const populatedCart = await Cart.findById(cart._id).populate(
+      "items.productId",
+    );
+    res.json(populatedCart);
+  } catch (error) {
+    console.error("Add to Cart Error:", error);
+    res.status(500).json({ error: "Failed to add to cart" });
+  }
+});
+
+// Add custom AI-generated product to cart
+app.post("/api/cart/custom", async (req, res) => {
+  try {
+    const { userId, customProduct, quantity = 1 } = req.body;
+
+    if (!userId || !customProduct) {
+      return res
+        .status(400)
+        .json({ error: "userId and customProduct are required" });
+    }
+
+    // Upload image to Cloudinary if it's a Data URL
+    let imageUrl = customProduct.imageUrl;
+    if (imageUrl && imageUrl.startsWith("data:")) {
+      console.log("☁️ Uploading custom design to Cloudinary...");
+      try {
+        const uploadResult = await cloudinary.uploader.upload(imageUrl, {
+          folder: "promptprint-cart-designs",
+          format: "webp",
+        });
+        imageUrl = uploadResult.secure_url;
+        console.log("✅ Uploaded to Cloudinary:", imageUrl);
+      } catch (uploadError) {
+        console.error("❌ Cloudinary upload failed:", uploadError);
+        return res.status(500).json({ error: "Failed to upload image" });
+      }
+    }
+
+    let cart = await Cart.findOne({ userId });
+    if (!cart) {
+      cart = new Cart({ userId, items: [] });
+    }
+
+    // Add custom product with Cloudinary URL
+    cart.items.push({
+      customProduct: {
+        name: customProduct.name,
+        description: customProduct.description,
+        price: customProduct.price,
+        imageUrl: imageUrl, // Now a Cloudinary URL, not Data URL
+        isCustom: true,
+      },
+      quantity,
+    });
+
+    await cart.save();
+    res.json(cart);
+  } catch (error) {
+    console.error("Add Custom to Cart Error:", error);
+    res.status(500).json({ error: "Failed to add custom item to cart" });
+  }
+});
+
+// Update cart item quantity
+app.put("/api/cart", async (req, res) => {
+  try {
+    const { userId, productId, itemId, quantity } = req.body;
+
+    const cart = await Cart.findOne({ userId });
+    if (!cart) {
+      return res.status(404).json({ error: "Cart not found" });
+    }
+
+    // Find item by productId or itemId
+    const item = cart.items.find((item) => {
+      if (itemId) return item._id.toString() === itemId;
+      if (productId && item.productId)
+        return item.productId.toString() === productId;
+      return false;
+    });
+
+    if (!item) {
+      return res.status(404).json({ error: "Item not found in cart" });
+    }
+
+    item.quantity = quantity;
+    await cart.save();
+
+    const populatedCart = await Cart.findById(cart._id).populate(
+      "items.productId",
+    );
+    res.json(populatedCart);
+  } catch (error) {
+    console.error("Update Cart Error:", error);
+    res.status(500).json({ error: "Failed to update cart" });
+  }
+});
+
+// Remove item from cart
+app.delete("/api/cart/:userId/:itemId", async (req, res) => {
+  try {
+    const { userId, itemId } = req.params;
+
+    const cart = await Cart.findOne({ userId });
+    if (!cart) {
+      return res.status(404).json({ error: "Cart not found" });
+    }
+
+    cart.items = cart.items.filter((item) => item._id.toString() !== itemId);
+    await cart.save();
+
+    const populatedCart = await Cart.findById(cart._id).populate(
+      "items.productId",
+    );
+    res.json(populatedCart);
+  } catch (error) {
+    console.error("Remove from Cart Error:", error);
+    res.status(500).json({ error: "Failed to remove from cart" });
+  }
+});
+
+// Clear entire cart (after checkout)
+app.delete("/api/cart/:userId/clear", async (req, res) => {
+  try {
+    const { userId } = req.params;
+    await Cart.findOneAndDelete({ userId });
+    res.json({ message: "Cart cleared" });
+  } catch (error) {
+    console.error("Clear Cart Error:", error);
+    res.status(500).json({ error: "Failed to clear cart" });
+  }
+});
+
+// --- Order API Routes ---
+
+// Create order (supports both regular and custom products)
+app.post("/api/orders", async (req, res) => {
+  try {
+    const { userId, customerDetails, items, totalAmount } = req.body;
+
+    if (!userId || !items || !items.length) {
+      return res.status(400).json({ error: "userId and items are required" });
+    }
+
+    const order = new Order({
+      userId,
+      customerDetails,
+      items,
+      totalAmount,
+      status: "Pending",
+    });
+
+    await order.save();
+    console.log("✅ Order created:", order._id);
+    res.status(201).json(order);
+  } catch (error) {
+    console.error("Create Order Error:", error);
+    res.status(500).json({ error: "Failed to create order" });
   }
 });
 
