@@ -5,6 +5,10 @@ const designSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
+  userId: {
+    type: String, // Changed to String to support external auth provider IDs
+    // required: true
+  },
   enhancedPrompt: {
     type: String,
   },
