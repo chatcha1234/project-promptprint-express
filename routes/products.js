@@ -18,7 +18,7 @@ const removeFile = (filePath) => {
 // Get Products (Public - ไม่ต้อง Login)
 router.get("/products", async (req, res) => {
   try {
-    const products = await Product.find().populate("items");
+    const products = await Product.find();
     res.json(products);
   } catch (error) {
     res.status(500).json({ error: "Error fetching products" });
@@ -30,7 +30,7 @@ router.get("/products", async (req, res) => {
 // Get all products (Admin)
 router.get("/admin/products", auth, admin, async (req, res) => {
   try {
-    const products = await Product.find().populate("items");
+    const products = await Product.find();
     res.json(products);
   } catch (error) {
     res.status(500).json({ error: "Error fetching products" });
