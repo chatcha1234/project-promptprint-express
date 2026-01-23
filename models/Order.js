@@ -35,10 +35,24 @@ const OrderSchema = new mongoose.Schema({
     type: Number,
     required: true,
   },
+  paymentSlipUrl: {
+    type: String, // URL from Cloudinary
+  },
+  paymentStatus: {
+    type: String,
+    default: "Pending", // Pending, Verified, Rejected
+  },
   status: {
     type: String,
-    default: "Pending", // Pending, Processing, Shipped, Delivered, Cancelled
-    enum: ["Pending", "Processing", "Shipped", "Delivered", "Cancelled"],
+    default: "Pending", // Pending, Payment Verification, Processing, Shipped, Delivered, Cancelled
+    enum: [
+      "Pending",
+      "Payment Verification",
+      "Processing",
+      "Shipped",
+      "Delivered",
+      "Cancelled",
+    ],
   },
   createdAt: {
     type: Date,

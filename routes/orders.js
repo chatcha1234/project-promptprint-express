@@ -1,6 +1,19 @@
 const express = require("express");
 const router = express.Router();
 const Order = require("../models/Order");
+const cloudinary = require("cloudinary").v2;
+const { CloudinaryStorage } = require("multer-storage-cloudinary");
+const multer = require("multer");
+
+// Configure Multer Storage for Cloudinary
+const storage = new CloudinaryStorage({
+  cloudinary: cloudinary,
+  params: {
+    folder: "payment_slips",
+    allowed_formats: ["jpg", "png", "jpeg"],
+  },
+});
+const upload = multer({ storage: storage });
 
 // Create order
 router.post("/api/orders", async (req, res) => {
@@ -53,7 +66,7 @@ router.get("/admin/orders", async (req, res) => {
   }
 });
 
-// Admin: Update order status
+// Update order status
 router.put("/admin/orders/:id/status", async (req, res) => {
   try {
     const { status } = req.body;
@@ -69,5 +82,38 @@ router.put("/admin/orders/:id/status", async (req, res) => {
     res.status(500).json({ error: "Failed to update order status" });
   }
 });
+
+// Upload Payment Slip
+router.post(
+  "/api/orders/:id/payment",
+  upload.single("slip"),
+  async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: "No file uploaded" });
+      }
+
+      const order = await Order.findByIdAndUpdate(
+        req.params.id,
+        {
+          paymentSlipUrl: req.file.path,
+          paymentStatus: "Pending", // Admin to verify
+          status: "Payment Verification",
+        },
+        { new: true },
+      );
+
+      if (!order) {
+        return res.status(404).json({ error: "Order not found" });
+      }
+
+      console.log(`✅ Payment Slip Uploaded for Order ${order._id}`);
+      res.json(order);
+    } catch (error) {
+      console.error("Upload Slip Error:", error);
+      res.status(500).json({ error: "Failed to upload payment slip" });
+    }
+  },
+);
 
 module.exports = router;
