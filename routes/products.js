@@ -131,7 +131,7 @@ router.delete("/admin/products/:id", auth, admin, async (req, res) => {
 // ===== UPLOAD ROUTE (ต้อง Login) =====
 
 // Standalone Image Upload Route
-router.post("/api/upload", auth, upload.single("image"), async (req, res) => {
+router.post("/upload", auth, upload.single("image"), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: "No image file provided" });
