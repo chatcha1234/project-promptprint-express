@@ -39,84 +39,51 @@ router.get("/admin/products", auth, admin, async (req, res) => {
 
 // Create Product (Admin)
 // รองรับทั้ง field เก่า (price, tag) และ field ใหม่ (basePrice, category)
-router.post(
-  "/admin/products",
-  auth,
-  admin,
-  upload.single("image"),
-  async (req, res) => {
-    try {
-      // รองรับ field จาก Frontend (price, tag) และ Backend (basePrice, category)
-      const { name, description } = req.body;
-      const category = req.body.category || req.body.tag || "General";
-      const basePrice = req.body.basePrice || req.body.price || 0;
+// Create Product (Admin)
+// รองรับทั้ง field เก่า (price, tag) และ field ใหม่ (basePrice, category)
+router.post("/admin/products", auth, admin, async (req, res) => {
+  try {
+    // รองรับ field จาก Frontend (price, tag) และ Backend (basePrice, category)
+    const { name, description, imageUrl } = req.body;
+    const category = req.body.category || req.body.tag || "General";
+    const basePrice = req.body.basePrice || req.body.price || 0;
 
-      let imageUrl = "";
-
-      if (req.file) {
-        const result = await cloudinary.uploader.upload(req.file.path, {
-          folder: "promptprint-products",
-          format: "webp",
-        });
-        imageUrl = result.secure_url;
-        removeFile(req.file.path);
-      }
-
-      const product = new Product({
-        name,
-        description,
-        category,
-        basePrice: Number(basePrice),
-        imageUrl,
-      });
-      await product.save();
-      res.status(201).json(product);
-    } catch (error) {
-      console.error("Create Product Error:", error);
-      res.status(500).json({ error: "Error creating product" });
-    }
-  },
-);
+    const product = new Product({
+      name,
+      description,
+      category,
+      basePrice: Number(basePrice),
+      imageUrl, // รับ URL มาตรงๆ จาก Frontend
+    });
+    await product.save();
+    res.status(201).json(product);
+  } catch (error) {
+    console.error("Create Product Error:", error);
+    res.status(500).json({ error: "Error creating product" });
+  }
+});
 
 // Update Product (Admin)
-router.put(
-  "/admin/products/:id",
-  auth,
-  admin,
-  upload.single("image"),
-  async (req, res) => {
-    try {
-      const { name, description } = req.body;
-      const category = req.body.category || req.body.tag;
-      const basePrice = req.body.basePrice || req.body.price;
+router.put("/admin/products/:id", auth, admin, async (req, res) => {
+  try {
+    const { name, description, imageUrl } = req.body;
+    const category = req.body.category || req.body.tag;
+    const basePrice = req.body.basePrice || req.body.price;
 
-      const updateData = { name, description };
-      if (category) updateData.category = category;
-      if (basePrice) updateData.basePrice = Number(basePrice);
+    const updateData = { name, description };
+    if (category) updateData.category = category;
+    if (basePrice) updateData.basePrice = Number(basePrice);
+    if (imageUrl) updateData.imageUrl = imageUrl;
 
-      if (req.file) {
-        const result = await cloudinary.uploader.upload(req.file.path, {
-          folder: "promptprint-products",
-          format: "webp",
-        });
-        updateData.imageUrl = result.secure_url;
-        removeFile(req.file.path);
-      }
-
-      const product = await Product.findByIdAndUpdate(
-        req.params.id,
-        updateData,
-        {
-          new: true,
-        },
-      );
-      res.json(product);
-    } catch (error) {
-      console.error("Update Product Error:", error);
-      res.status(500).json({ error: "Error updating product" });
-    }
-  },
-);
+    const product = await Product.findByIdAndUpdate(req.params.id, updateData, {
+      new: true,
+    });
+    res.json(product);
+  } catch (error) {
+    console.error("Update Product Error:", error);
+    res.status(500).json({ error: "Error updating product" });
+  }
+});
 
 // Delete Product (Admin)
 router.delete("/admin/products/:id", auth, admin, async (req, res) => {
