@@ -4,6 +4,7 @@ const Product = require("../models/Product");
 const cloudinary = require("cloudinary").v2;
 const upload = require("../middleware/upload");
 const fs = require("fs");
+const { auth, admin } = require("../middleware/auth");
 
 // Helper to remove files
 const removeFile = (filePath) => {
@@ -12,7 +13,9 @@ const removeFile = (filePath) => {
   });
 };
 
-// 3. Get Products (Public)
+// ===== PUBLIC ROUTES =====
+
+// Get Products (Public - ไม่ต้อง Login)
 router.get("/products", async (req, res) => {
   try {
     const products = await Product.find().populate("items");
@@ -22,10 +25,10 @@ router.get("/products", async (req, res) => {
   }
 });
 
-// 4. Products Management (Admin)
+// ===== ADMIN ROUTES (ต้อง Login + เป็น Admin) =====
+
 // Get all products (Admin)
-// Note: This duplicates public get products but logic is same.
-router.get("/admin/products", async (req, res) => {
+router.get("/admin/products", auth, admin, async (req, res) => {
   try {
     const products = await Product.find().populate("items");
     res.json(products);
@@ -34,56 +37,89 @@ router.get("/admin/products", async (req, res) => {
   }
 });
 
-// Create Product
-router.post("/admin/products", upload.single("image"), async (req, res) => {
-  try {
-    const { name, description, category, basePrice } = req.body;
-    let imageUrl = "";
+// Create Product (Admin)
+// รองรับทั้ง field เก่า (price, tag) และ field ใหม่ (basePrice, category)
+router.post(
+  "/admin/products",
+  auth,
+  admin,
+  upload.single("image"),
+  async (req, res) => {
+    try {
+      // รองรับ field จาก Frontend (price, tag) และ Backend (basePrice, category)
+      const { name, description } = req.body;
+      const category = req.body.category || req.body.tag || "General";
+      const basePrice = req.body.basePrice || req.body.price || 0;
 
-    if (req.file) {
-      const result = await cloudinary.uploader.upload(req.file.path);
-      imageUrl = result.secure_url;
-      removeFile(req.file.path);
+      let imageUrl = "";
+
+      if (req.file) {
+        const result = await cloudinary.uploader.upload(req.file.path, {
+          folder: "promptprint-products",
+          format: "webp",
+        });
+        imageUrl = result.secure_url;
+        removeFile(req.file.path);
+      }
+
+      const product = new Product({
+        name,
+        description,
+        category,
+        basePrice: Number(basePrice),
+        imageUrl,
+      });
+      await product.save();
+      res.status(201).json(product);
+    } catch (error) {
+      console.error("Create Product Error:", error);
+      res.status(500).json({ error: "Error creating product" });
     }
+  },
+);
 
-    const product = new Product({
-      name,
-      description,
-      category,
-      basePrice,
-      imageUrl,
-    });
-    await product.save();
-    res.status(201).json(product);
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: "Error creating product" });
-  }
-});
+// Update Product (Admin)
+router.put(
+  "/admin/products/:id",
+  auth,
+  admin,
+  upload.single("image"),
+  async (req, res) => {
+    try {
+      const { name, description } = req.body;
+      const category = req.body.category || req.body.tag;
+      const basePrice = req.body.basePrice || req.body.price;
 
-// Update Product
-router.put("/admin/products/:id", upload.single("image"), async (req, res) => {
-  try {
-    const { name, description, category, basePrice } = req.body;
-    const updateData = { name, description, category, basePrice };
+      const updateData = { name, description };
+      if (category) updateData.category = category;
+      if (basePrice) updateData.basePrice = Number(basePrice);
 
-    if (req.file) {
-      const result = await cloudinary.uploader.upload(req.file.path);
-      updateData.imageUrl = result.secure_url;
-      removeFile(req.file.path);
+      if (req.file) {
+        const result = await cloudinary.uploader.upload(req.file.path, {
+          folder: "promptprint-products",
+          format: "webp",
+        });
+        updateData.imageUrl = result.secure_url;
+        removeFile(req.file.path);
+      }
+
+      const product = await Product.findByIdAndUpdate(
+        req.params.id,
+        updateData,
+        {
+          new: true,
+        },
+      );
+      res.json(product);
+    } catch (error) {
+      console.error("Update Product Error:", error);
+      res.status(500).json({ error: "Error updating product" });
     }
+  },
+);
 
-    const product = await Product.findByIdAndUpdate(req.params.id, updateData, {
-      new: true,
-    });
-    res.json(product);
-  } catch (error) {
-    res.status(500).json({ error: "Error updating product" });
-  }
-});
-
-// Delete Product
-router.delete("/admin/products/:id", async (req, res) => {
+// Delete Product (Admin)
+router.delete("/admin/products/:id", auth, admin, async (req, res) => {
   try {
     await Product.findByIdAndDelete(req.params.id);
     res.json({ message: "Product deleted" });
@@ -92,9 +128,10 @@ router.delete("/admin/products/:id", async (req, res) => {
   }
 });
 
-// Standalone Image Upload Route (Generic upload)
-// Keeping it here as it was near products usually.
-router.post("/api/upload", upload.single("image"), async (req, res) => {
+// ===== UPLOAD ROUTE (ต้อง Login) =====
+
+// Standalone Image Upload Route
+router.post("/api/upload", auth, upload.single("image"), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: "No image file provided" });
@@ -103,7 +140,6 @@ router.post("/api/upload", upload.single("image"), async (req, res) => {
       folder: "promptprint-products",
       format: "webp",
     });
-    // Remove local file
     removeFile(req.file.path);
 
     res.json({ imageUrl: result.secure_url });

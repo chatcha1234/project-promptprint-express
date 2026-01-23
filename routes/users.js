@@ -1,9 +1,11 @@
 const express = require("express");
 const router = express.Router();
 const User = require("../models/User");
+const { auth, admin } = require("../middleware/auth");
 
-// Get all users (Admin)
-router.get("/", async (req, res) => {
+// Get all users (Admin Only)
+// ต้อง Login + เป็น Admin เท่านั้น
+router.get("/", auth, admin, async (req, res) => {
   try {
     const users = await User.find({}, "-password").sort({ createdAt: -1 });
     res.json(users);
@@ -13,8 +15,9 @@ router.get("/", async (req, res) => {
   }
 });
 
-// Delete user (Admin)
-router.delete("/:id", async (req, res) => {
+// Delete user (Admin Only)
+// ต้อง Login + เป็น Admin เท่านั้น
+router.delete("/:id", auth, admin, async (req, res) => {
   try {
     await User.findByIdAndDelete(req.params.id);
     res.json({ message: "User deleted successfully" });
