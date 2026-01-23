@@ -38,41 +38,42 @@ router.get("/admin/products", auth, admin, async (req, res) => {
 });
 
 // Create Product (Admin)
-// รองรับทั้ง field เก่า (price, tag) และ field ใหม่ (basePrice, category)
-// Create Product (Admin)
-// รองรับทั้ง field เก่า (price, tag) และ field ใหม่ (basePrice, category)
 router.post("/admin/products", auth, admin, async (req, res) => {
   try {
-    // รองรับ field จาก Frontend (price, tag) และ Backend (basePrice, category)
-    const { name, description, imageUrl } = req.body;
-    const category = req.body.category || req.body.tag || "General";
-    const basePrice = req.body.basePrice || req.body.price || 0;
-
+    const { name, description, imageUrl, price, tag } = req.body;
+    // Map input to match Schema exactly
+    // Schema expects: name, description, price, imageUrl, tag
     const product = new Product({
       name,
       description,
-      category,
-      basePrice: Number(basePrice),
-      imageUrl, // รับ URL มาตรงๆ จาก Frontend
+      price: Number(price), // Use 'price' directly, matches Schema
+      imageUrl,
+      tag: tag || "New", // Use 'tag' directly, matches Schema
     });
+
     await product.save();
     res.status(201).json(product);
   } catch (error) {
     console.error("Create Product Error:", error);
-    res.status(500).json({ error: "Error creating product" });
+    // Return detailed error for debugging if possible, or just generic 500
+    res
+      .status(500)
+      .json({ error: "Error creating product", details: error.message });
   }
 });
 
 // Update Product (Admin)
 router.put("/admin/products/:id", auth, admin, async (req, res) => {
   try {
-    const { name, description, imageUrl } = req.body;
-    const category = req.body.category || req.body.tag;
-    const basePrice = req.body.basePrice || req.body.price;
+    const { name, description, imageUrl, price, tag } = req.body;
 
-    const updateData = { name, description };
-    if (category) updateData.category = category;
-    if (basePrice) updateData.basePrice = Number(basePrice);
+    const updateData = {
+      name,
+      description,
+    };
+
+    if (price !== undefined) updateData.price = Number(price);
+    if (tag !== undefined) updateData.tag = tag;
     if (imageUrl) updateData.imageUrl = imageUrl;
 
     const product = await Product.findByIdAndUpdate(req.params.id, updateData, {
